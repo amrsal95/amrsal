@@ -228,16 +228,10 @@
 
 <script>
 // ── Auth ────────────────────────────────────────────────────────────────────
-const AUTH_KEY = "nw_auth";
 const PWD = "Basbosty!989";
-(function(){
-  if(sessionStorage.getItem(AUTH_KEY)==="1")
-    document.getElementById('login-overlay').style.display='none';
-})();
 function doLogin(){
   const val = document.getElementById('login-inp').value;
   if(val === PWD){
-    sessionStorage.setItem(AUTH_KEY,"1");
     document.getElementById('login-overlay').style.display='none';
   } else {
     const err = document.getElementById('login-err');
