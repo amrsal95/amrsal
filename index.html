@@ -301,7 +301,7 @@ async function yahooPrice(symbol){
 }
 
 async function fetchAllPrices(){
-  const symbols = [...P.stocks.map(s=>s.symbol), "EURUSD=X","GBPEUR=X","EGPEUR=X","GC=F"];
+  const symbols = [...P.stocks.map(s=>s.symbol), "EURUSD=X","GBPEUR=X","EGPEUR=X","GC=F","BTC-EUR","ETH-EUR"];
   const results = await Promise.allSettled(symbols.map(s=>yahooPrice(s)));
   const raw = {};
   symbols.forEach((s,i)=>{ if(results[i].status==="fulfilled") raw[s]=results[i].value; });
@@ -321,13 +321,8 @@ async function fetchAllPrices(){
     else stockPrices[s.symbol]=e.price;
   });
 
-  let btcEur=null,ethEur=null;
-  try{
-    const cg=await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=eur");
-    const cgd=await cg.json();
-    btcEur=cgd?.bitcoin?.eur??null;
-    ethEur=cgd?.ethereum?.eur??null;
-  }catch{}
+  const btcEur = raw["BTC-EUR"]?.price ?? null;
+  const ethEur = raw["ETH-EUR"]?.price ?? null;
 
   let goldPerGram=null;
   if(raw["GC=F"]?.price) goldPerGram=(raw["GC=F"].price/31.1035)*usdEur;
