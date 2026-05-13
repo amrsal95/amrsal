@@ -223,7 +223,7 @@
       <div id="crypto-view"></div>
       <div id="crypto-edit" style="display:none"></div>
     </div>
-    <div class="card"><div class="card-title">Gold — Live Price (GC=F Futures)</div>
+    <div class="card"><div class="card-title">Gold — BTC Egypt Live Prices</div>
       <div id="gold-view"></div>
       <div id="gold-edit" style="display:none"></div>
     </div>
@@ -257,11 +257,11 @@
     </div>
   </div>
 
-  <footer>Yahoo Finance · CoinGecko · Auto-refresh every 5 min · Edits saved in browser</footer>
+  <footer>Yahoo Finance · BTC Egypt · Auto-refresh every 5 min · Edits saved in browser</footer>
 </div>
 
 <script>
-// ── Auth ────────────────────────────────────────────────────────────────────
+// ── Auth ──────────────────────────────────────────────
 const PWD = "Basbosty!989";
 function doLogin(){
   const val = document.getElementById('login-inp').value;
@@ -276,7 +276,7 @@ function doLogin(){
   }
 }
 
-// ── Portfolio ───────────────────────────────────────────────────────────────
+// ── Portfolio ───────────────────────────────────────────
 const STORAGE_KEY = "wealth_v4";
 const DEFAULT = {
   stocks:[
@@ -291,7 +291,14 @@ const DEFAULT = {
     {symbol:"BTC",name:"Bitcoin", amount:0.020},
     {symbol:"ETH",name:"Ethereum",amount:0.0032},
   ],
-  gold:{grams:198.5},
+  gold:{
+    items:[
+      {name:"2.5g Spoon",  grams:2.5, type:"spoon", qty:1},
+      {name:"10g Ingot",   grams:10,  type:"ingot", qty:7},
+      {name:"8g Coin",     grams:8,   type:"coin",  qty:12},
+      {name:"20g Ingot",   grams:20,  type:"ingot", qty:1},
+    ]
+  },
   realEstate:[
     {name:"Apt 1 — Kafr Abdo (265m²)", valueEGP:10500000},
     {name:"Large Apt Share (222m²)",    valueEGP:8890000},
@@ -318,18 +325,19 @@ const DEFAULT = {
 
 let P = (()=>{ try{const s=localStorage.getItem(STORAGE_KEY);return s?JSON.parse(s):JSON.parse(JSON.stringify(DEFAULT))}catch{return JSON.parse(JSON.stringify(DEFAULT))} })();
 if(!P.certificates) P.certificates = JSON.parse(JSON.stringify(DEFAULT.certificates));
+if(!P.gold.items)   P.gold       = JSON.parse(JSON.stringify(DEFAULT.gold));
 let prices = null;
 let editMode = false;
 let draft = null;
 
 function savePortfolio(){ try{localStorage.setItem(STORAGE_KEY,JSON.stringify(P))}catch{} }
 
-// ── Formatters ──────────────────────────────────────────────────────────────
+// ── Formatters ───────────────────────────────────────────
 const nf = (v,d=0)=>new Intl.NumberFormat('fr-FR',{minimumFractionDigits:d,maximumFractionDigits:d}).format(v||0);
 const eur  = v=>`€${nf(v)}`;
 const egpF = v=>`£E ${nf(v)}`;
 
-// ── Fetch prices ────────────────────────────────────────────────────────────
+// ── Fetch prices ──────────────────────────────────────────
 const PROXY = "https://corsproxy.io/?url=";
 
 async function yahooPrice(symbol){
@@ -338,6 +346,27 @@ async function yahooPrice(symbol){
   const d = await r.json();
   const meta = d?.chart?.result?.[0]?.meta;
   return {price: meta?.regularMarketPrice, currency: meta?.currency};
+}
+
+const BTC_GQL = 'https://magento-1205032-5154147.cloudwaysapps.com/graphql';
+
+async function fetchBTCGoldPrices(){
+  const keys = [...new Set(P.gold.items.map(i=>`${i.grams}|${i.type}`))];
+  const results = {};
+  await Promise.allSettled(keys.map(async key=>{
+    const [grams,type] = key.split('|');
+    try{
+      const r = await fetch(PROXY+encodeURIComponent(BTC_GQL),{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({query:`{products(search:"${grams}g ${type}",pageSize:1){items{name,price_range{minimum_price{final_price{value,currency}}}}}}`})
+      });
+      const d = await r.json();
+      const p = d?.data?.products?.items?.[0]?.price_range?.minimum_price?.final_price?.value;
+      if(p) results[key]=p;
+    }catch{}
+  }));
+  return results;
 }
 
 async function fetchAllPrices(){
@@ -367,7 +396,9 @@ async function fetchAllPrices(){
   let goldPerGram=null;
   if(raw["GC=F"]?.price) goldPerGram=(raw["GC=F"].price/31.1035)*usdEur;
 
-  return {stockPrices,btcEur,ethEur,goldPerGram,fx:{usdEur,gbpEur,egpEur}};
+  const btcGoldPrices = await fetchBTCGoldPrices();
+
+  return {stockPrices,btcEur,ethEur,goldPerGram,btcGoldPrices,fx:{usdEur,gbpEur,egpEur}};
 }
 
 async function refreshPrices(){
@@ -383,11 +414,11 @@ async function refreshPrices(){
     if(!prices.goldPerGram) errors.push('Gold price unavailable — showing 0');
     const now = new Date();
     document.getElementById('last-updated').textContent = now.toLocaleTimeString();
-    setStatus(errors.length?'warn':'ok', errors.length?'Live · some prices unavailable':'Live · Yahoo Finance + CoinGecko');
+    setStatus(errors.length?'warn':'ok', errors.length?'Live · some prices unavailable':'Live · Yahoo Finance + BTC Egypt');
   }catch(e){
     errors.push('Failed to fetch prices — check your internet connection');
     setStatus('error','Price fetch failed');
-    if(!prices) prices={stockPrices:{},btcEur:null,ethEur:null,goldPerGram:null,fx:{usdEur:0.921,gbpEur:1.17,egpEur:0.0162}};
+    if(!prices) prices={stockPrices:{},btcEur:null,ethEur:null,goldPerGram:null,btcGoldPrices:{},fx:{usdEur:0.921,gbpEur:1.17,egpEur:0.0162}};
   }
   errors.forEach(msg=>{
     const d=document.createElement('div');
@@ -407,10 +438,10 @@ function setStatus(type,msg){
   dot.style.boxShadow=`0 0 6px ${map[type]||map.loading}`;
 }
 
-// ── Calculations ────────────────────────────────────────────────────────────
+// ── Calculations ───────────────────────────────────────────
 function calc(){
   if(!prices) return null;
-  const {fx,stockPrices,btcEur,ethEur,goldPerGram}=prices;
+  const {fx,stockPrices,btcEur,ethEur,goldPerGram,btcGoldPrices}=prices;
   const egpR=fx.egpEur;
 
   const stockValues=P.stocks.map(s=>({
@@ -422,7 +453,14 @@ function calc(){
     const p=c.symbol==='BTC'?btcEur:c.symbol==='ETH'?ethEur:null;
     return{...c,priceEUR:p??0,valueEUR:(p??0)*c.amount,live:p!=null};
   });
-  const goldEUR = goldPerGram ? P.gold.grams*goldPerGram : 0;
+  const goldItems = P.gold.items.map(item=>{
+    const key=`${item.grams}|${item.type}`;
+    const btcPriceEGP = btcGoldPrices?.[key]??null;
+    const priceEGP = btcPriceEGP ?? (goldPerGram ? goldPerGram*item.grams/egpR : 0);
+    const totalEGP = priceEGP*item.qty;
+    return{...item,priceEGP,totalEGP,totalEUR:totalEGP*egpR,btcLive:btcPriceEGP!=null};
+  });
+  const goldEUR = goldItems.reduce((a,b)=>a+b.totalEUR,0);
   const stocksEUR = stockValues.reduce((a,b)=>a+b.valueEUR,0);
   const cryptoEUR = cryptoValues.reduce((a,b)=>a+b.valueEUR,0);
   const realEstateEUR = P.realEstate.reduce((a,b)=>a+b.valueEGP*egpR,0);
@@ -432,10 +470,10 @@ function calc(){
   const savingsEUR = otherSavingsEUR + certTotalEUR;
   const totalEUR = stocksEUR+cryptoEUR+goldEUR+realEstateEUR+savingsEUR;
   const monthlyEUR = P.income.reduce((a,b)=>a+(b.amountEGP||0)*egpR+(b.amountEUR||0),0);
-  return{stockValues,cryptoValues,goldEUR,goldPerGram,stocksEUR,cryptoEUR,realEstateEUR,savingsEUR,certTotalEGP,certTotalEUR,otherSavingsEUR,totalEUR,monthlyEUR,fx};
+  return{stockValues,cryptoValues,goldEUR,goldItems,goldPerGram,stocksEUR,cryptoEUR,realEstateEUR,savingsEUR,certTotalEGP,certTotalEUR,otherSavingsEUR,totalEUR,monthlyEUR,fx};
 }
 
-// ── Render all ───────────────────────────────────────────────────────────────
+// ── Render all ─────────────────────────────────────────────
 function renderAll(){
   const d=calc();
   if(!d) return;
@@ -456,7 +494,7 @@ function renderAll(){
   renderIncome(d);
 }
 
-// ── Overview ─────────────────────────────────────────────────────────────────
+// ── Overview ───────────────────────────────────────────────
 function renderOverview(d){
   const cats=[
     {label:"Real Estate",value:d.realEstateEUR,color:"var(--gold)"},
@@ -499,7 +537,7 @@ function renderOverview(d){
   svg.appendChild(circle);
 }
 
-// ── Row HTML ──────────────────────────────────────────────────────────────────
+// ── Row HTML ────────────────────────────────────────────────
 function rowHTML(name,sub,val,sub2,color,last,live=true){
   return `<div class="row${last?'':' row-border'}">
     <div class="row-left"><div class="name">${name}${!live?'<span class="est-badge">est</span>':''}</div>${sub?`<div class="sub">${sub}</div>`:''}</div>
@@ -510,7 +548,7 @@ function totalHTML(label,val,color){
   return `<div class="total-row"><span class="total-label mono">${label}</span><span class="total-val" style="color:${color}">${val}</span></div>`;
 }
 
-// ── Stocks ────────────────────────────────────────────────────────────────────
+// ── Stocks ──────────────────────────────────────────────────
 function renderStocks(d){
   if(editMode){
     document.getElementById('stocks-view').style.display='none';
@@ -534,7 +572,7 @@ function renderStocks(d){
   }
 }
 
-// ── Crypto ─────────────────────────────────────────────────────────────────────
+// ── Crypto ────────────────────────────────────────────────────
 function renderCrypto(d){
   if(editMode){
     document.getElementById('crypto-view').style.display='none';
@@ -550,7 +588,26 @@ function renderCrypto(d){
       </div>`).join('')+editActionsHTML();
     const ge=document.getElementById('gold-edit');
     ge.style.display='block';
-    ge.innerHTML=`<div class="edit-box"><div><label class="inp-label">Total Grams</label><input class="inp" type="number" step="0.1" value="${draft.gold.grams}" onchange="updDraft('gold.grams',parseFloat(this.value)||0)"/></div></div>`+editActionsHTML();
+    ge.innerHTML=draft.gold.items.map((item,i)=>`
+      <div class="edit-box">
+        <div class="two-col">
+          <div><label class="inp-label">Name</label><input class="inp" value="${item.name}" onchange="updDraft('gold.items.${i}.name',this.value)"/></div>
+          <div><label class="inp-label">Type</label>
+            <select class="inp" onchange="updDraft('gold.items.${i}.type',this.value)">
+              ${['ingot','coin','spoon','other'].map(t=>`<option value="${t}"${item.type===t?' selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="two-col">
+          <div><label class="inp-label">Weight (g)</label><input class="inp" type="number" step="0.1" value="${item.grams}" onchange="updDraft('gold.items.${i}.grams',parseFloat(this.value)||0)"/></div>
+          <div><label class="inp-label">Quantity</label><input class="inp" type="number" step="1" value="${item.qty}" onchange="updDraft('gold.items.${i}.qty',parseInt(this.value)||0)"/></div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:4px">
+          <button onclick="removeGoldItem(${i})" style="background:rgba(224,80,80,.08);border:1px solid rgba(224,80,80,.25);border-radius:8px;color:#e05050;padding:6px 14px;font-size:11px;font-family:'DM Mono',monospace;cursor:pointer">✕ Remove</button>
+        </div>
+      </div>`).join('')
+    +`<button onclick="addGoldItem()" style="background:rgba(232,197,71,.06);border:1px solid rgba(232,197,71,.2);border-radius:8px;color:var(--yellow);padding:9px 18px;font-size:11px;font-family:'DM Mono',monospace;cursor:pointer;width:100%;margin-bottom:10px">+ Add Gold Item</button>`
+    +editActionsHTML();
   } else {
     document.getElementById('crypto-edit').style.display='none';
     document.getElementById('gold-edit').style.display='none';
@@ -559,11 +616,21 @@ function renderCrypto(d){
     cv.innerHTML=d.cryptoValues.map((c,i)=>rowHTML(c.name,`${c.amount} ${c.symbol}`,eur(c.valueEUR),`@ ${eur(c.priceEUR)}/${c.symbol}`,'var(--purple)',i===d.cryptoValues.length-1,c.live)).join('');
     const gv=document.getElementById('gold-view');
     gv.style.display='block';
-    gv.innerHTML=rowHTML('Total Gold Holdings',`${P.gold.grams}g · Spoon 2.5g · Bars 10g×7 · Coins 8g×12 · Bar 20g`,eur(d.goldEUR),d.goldPerGram?`${eur(d.goldPerGram)}/g · ${nf(d.goldPerGram/d.fx.egpEur,0)} EGP/g`:'','var(--yellow)',true,!!d.goldPerGram);
+    const totalGoldGrams=d.goldItems.reduce((a,b)=>a+b.grams*b.qty,0);
+    gv.innerHTML=d.goldItems.map((item,i)=>rowHTML(
+      item.name,
+      `${item.qty} × ${item.grams}g ${item.type}${item.btcLive?' · BTC Egypt live':' · est.'}`,
+      egpF(item.totalEGP),
+      eur(item.totalEUR),
+      'var(--yellow)',
+      i===d.goldItems.length-1,
+      item.btcLive
+    )).join('')
+    +totalHTML('TOTAL GOLD',`${eur(d.goldEUR)} · ${egpF(d.goldItems.reduce((a,b)=>a+b.totalEGP,0))} · ${nf(totalGoldGrams,1)}g`,'var(--yellow)');
   }
 }
 
-// ── Real Estate ────────────────────────────────────────────────────────────────
+// ── Real Estate ─────────────────────────────────────────────────
 function renderRealEstate(d){
   if(editMode){
     document.getElementById('re-view').style.display='none';
@@ -584,7 +651,7 @@ function renderRealEstate(d){
   }
 }
 
-// ── Savings ───────────────────────────────────────────────────────────────────
+// ── Savings ───────────────────────────────────────────────────
 function renderSavings(d){
   if(editMode){
     document.getElementById('savings-view').style.display='none';
@@ -612,7 +679,7 @@ function renderSavings(d){
   }
 }
 
-// ── Income ─────────────────────────────────────────────────────────────────────
+// ── Income ────────────────────────────────────────────────────
 function renderIncome(d){
   if(editMode){
     document.getElementById('income-view').style.display='none';
@@ -639,7 +706,7 @@ function renderIncome(d){
   }
 }
 
-// ── Certificate Alerts ────────────────────────────────────────────────────────
+// ── Certificate Alerts ─────────────────────────────────────
 function renderAlerts(){
   const today=new Date();today.setHours(0,0,0,0);
   const items=P.certificates.map(c=>{
@@ -670,7 +737,7 @@ function renderAlerts(){
   }).join('');
 }
 
-// ── Certificates ──────────────────────────────────────────────────────────────
+// ── Certificates ───────────────────────────────────────────────
 function renderCertificates(d){
   const today=new Date();today.setHours(0,0,0,0);
   if(editMode){
@@ -749,6 +816,16 @@ function toggleCert(i){
   det.style.display=open?'block':'none';
   tog.textContent=open?'▾':'▸';
 }
+function addGoldItem(){
+  if(!draft)return;
+  draft.gold.items.push({name:'New Item',grams:10,type:'ingot',qty:1});
+  renderAll();
+}
+function removeGoldItem(i){
+  if(!draft)return;
+  draft.gold.items.splice(i,1);
+  renderAll();
+}
 function addCert(){
   if(!draft)return;
   const today=new Date().toISOString().split('T')[0];
@@ -762,7 +839,7 @@ function removeCert(i){
   renderAll();
 }
 
-// ── Edit helpers ───────────────────────────────────────────────────────────────
+// ── Edit helpers ────────────────────────────────────────────────
 function editActionsHTML(){
   return `<div class="edit-actions"><button class="btn-cancel" onclick="cancelEdit()">Cancel</button><button class="btn-save" onclick="saveEdit()">Save Changes</button></div>`;
 }
@@ -802,7 +879,7 @@ function updDraft(path,value){
   o[keys[keys.length-1]]=value;
 }
 
-// ── Tab switching ──────────────────────────────────────────────────────────────
+// ── Tab switching ───────────────────────────────────────────────
 function switchTab(name){
   document.querySelectorAll('.tab-content').forEach(el=>el.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(el=>el.classList.remove('active'));
@@ -810,7 +887,7 @@ function switchTab(name){
   event.target.classList.add('active');
 }
 
-// ── Init ───────────────────────────────────────────────────────────────────────
+// ── Init ──────────────────────────────────────────────────
 refreshPrices();
 setInterval(refreshPrices, 300000);
 </script>
