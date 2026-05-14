@@ -192,7 +192,7 @@
   <div class="tabs">
     <button class="tab active" onclick="switchTab('overview')">Overview</button>
     <button class="tab" onclick="switchTab('stocks')">Stocks</button>
-    <button class="tab" onclick="switchTab('crypto')">Crypto & Gold</button>
+    <button class="tab" onclick="switchTab('crypto')">Crypto &amp; Gold</button>
     <button class="tab" onclick="switchTab('realestate')">Real Estate</button>
     <button class="tab" onclick="switchTab('savings')">Savings</button>
     <button class="tab" onclick="switchTab('income')">Income</button>
@@ -364,7 +364,7 @@ async function fetchBTCGoldPrices(){
         });
         const d = await r.json();
         const p = d?.data?.products?.items?.[0]?.price_range?.minimum_price?.final_price?.value;
-        if(p){ results[key]=p; break; }
+        if(p && p > parseFloat(grams)*500){ results[key]=p; break; }
       }catch{}
     }
   }));
@@ -479,7 +479,6 @@ function calc(){
 function renderAll(){
   const d=calc();
   if(!d) return;
-  // Top stats
   document.getElementById('stat-networth').textContent=eur(d.totalEUR);
   document.getElementById('stat-networth-sub').textContent=egpF(d.totalEUR/d.fx.egpEur);
   document.getElementById('stat-income').textContent=eur(d.monthlyEUR);
@@ -506,7 +505,6 @@ function renderOverview(d){
     {label:"Crypto",     value:d.cryptoEUR,     color:"var(--purple)"},
   ];
   const total=d.totalEUR;
-  // Mini cards
   document.getElementById('mini-cards').innerHTML=cats.map(c=>`
     <div class="mini-card" style="border:1px solid ${c.color}40">
       <div style="position:absolute;top:0;left:0;right:0;height:2px;background:${c.color}"></div>
@@ -515,7 +513,6 @@ function renderOverview(d){
       <div class="mini-sub">${((c.value/total)*100).toFixed(1)}% of total</div>
     </div>`).join('');
 
-  // Pie
   const svg=document.getElementById('pie-svg');
   const legend=document.getElementById('pie-legend');
   let cum=-Math.PI/2;
@@ -619,16 +616,39 @@ function renderCrypto(d){
     const gv=document.getElementById('gold-view');
     gv.style.display='block';
     const totalGoldGrams=d.goldItems.reduce((a,b)=>a+b.grams*b.qty,0);
-    gv.innerHTML=d.goldItems.map((item,i)=>rowHTML(
-      item.name,
-      `${item.grams}g ${item.type} · ${item.btcLive?'BTC Egypt live':'est.'}`,
-      egpF(item.totalEGP),
-      `${egpF(item.priceEGP)}/unit × ${item.qty} · ${eur(item.totalEUR)}`,
-      'var(--yellow)',
-      i===d.goldItems.length-1,
-      item.btcLive
-    )).join('')
-    +totalHTML('TOTAL GOLD',`${eur(d.goldEUR)} · ${egpF(d.goldItems.reduce((a,b)=>a+b.totalEGP,0))} · ${nf(totalGoldGrams,1)}g`,'var(--yellow)');
+    const totalGoldEGP=d.goldItems.reduce((a,b)=>a+b.totalEGP,0);
+    const hdr=`font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.08em;padding:4px 8px`;
+    gv.innerHTML=`
+      <div style="display:grid;grid-template-columns:2fr 1.4fr 44px 1.4fr;margin-bottom:2px">
+        <span style="${hdr}">Item</span>
+        <span style="${hdr};text-align:right">Unit Price</span>
+        <span style="${hdr};text-align:center">Qty</span>
+        <span style="${hdr};text-align:right">Total</span>
+      </div>
+      ${d.goldItems.map((item,i)=>`
+      <div style="display:grid;grid-template-columns:2fr 1.4fr 44px 1.4fr;transition:background .15s;${i<d.goldItems.length-1?'border-bottom:1px solid #0f1824':''}" onmouseover="this.style.background='rgba(232,197,71,.03)'" onmouseout="this.style.background=''">
+        <div style="padding:10px 8px">
+          <div style="font-size:14px;color:var(--text);display:flex;align-items:center;gap:6px">${item.name}${!item.btcLive?'<span class="est-badge">est</span>':''}</div>
+          <div style="font-size:11px;color:var(--dim);font-family:'DM Mono',monospace;margin-top:2px">${item.grams}g ${item.type} · ${item.btcLive?'BTC Egypt live':'est.'}</div>
+        </div>
+        <div style="padding:10px 8px;text-align:right">
+          <div style="font-size:14px;font-family:'DM Mono',monospace;color:var(--yellow)">${egpF(item.priceEGP)}</div>
+          <div style="font-size:11px;color:var(--dim);margin-top:2px">${eur(item.priceEGP*d.fx.egpEur)}/unit</div>
+        </div>
+        <div style="padding:10px 8px;text-align:center;font-size:14px;font-family:'DM Mono',monospace;color:var(--text);line-height:1.6">× ${item.qty}</div>
+        <div style="padding:10px 8px;text-align:right">
+          <div style="font-size:14px;font-family:'DM Mono',monospace;color:var(--yellow)">${egpF(item.totalEGP)}</div>
+          <div style="font-size:11px;color:var(--dim);margin-top:2px">${eur(item.totalEUR)}</div>
+        </div>
+      </div>`).join('')}
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start">
+        <span style="font-size:12px;color:var(--muted);font-family:'DM Mono',monospace">TOTAL GOLD</span>
+        <div style="text-align:right">
+          <div style="font-size:20px;font-weight:700;font-family:'Syne',sans-serif;color:var(--yellow)">${egpF(totalGoldEGP)}</div>
+          <div style="font-size:13px;color:var(--dim);font-family:'DM Mono',monospace;margin-top:3px">${eur(d.goldEUR)}</div>
+          <div style="font-size:11px;color:var(--dim);font-family:'DM Mono',monospace;margin-top:4px">${nf(totalGoldGrams,1)}g total weight</div>
+        </div>
+      </div>`;
   }
 }
 
