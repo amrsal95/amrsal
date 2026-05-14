@@ -355,16 +355,18 @@ async function fetchBTCGoldPrices(){
   const results = {};
   await Promise.allSettled(keys.map(async key=>{
     const [grams,type] = key.split('|');
-    try{
-      const r = await fetch(PROXY+encodeURIComponent(BTC_GQL),{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({query:`{products(search:"${grams}g ${type}",pageSize:1){items{name,price_range{minimum_price{final_price{value,currency}}}}}}`})
-      });
-      const d = await r.json();
-      const p = d?.data?.products?.items?.[0]?.price_range?.minimum_price?.final_price?.value;
-      if(p) results[key]=p;
-    }catch{}
+    for(const term of [`${grams}g ${type}`, `${grams}g`]){
+      try{
+        const r = await fetch(PROXY+encodeURIComponent(BTC_GQL),{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({query:`{products(search:"${term}",pageSize:1){items{name,price_range{minimum_price{final_price{value,currency}}}}}}`})
+        });
+        const d = await r.json();
+        const p = d?.data?.products?.items?.[0]?.price_range?.minimum_price?.final_price?.value;
+        if(p){ results[key]=p; break; }
+      }catch{}
+    }
   }));
   return results;
 }
@@ -619,9 +621,9 @@ function renderCrypto(d){
     const totalGoldGrams=d.goldItems.reduce((a,b)=>a+b.grams*b.qty,0);
     gv.innerHTML=d.goldItems.map((item,i)=>rowHTML(
       item.name,
-      `${item.qty} × ${item.grams}g ${item.type}${item.btcLive?' · BTC Egypt live':' · est.'}`,
+      `${item.grams}g ${item.type} · ${item.btcLive?'BTC Egypt live':'est.'}`,
       egpF(item.totalEGP),
-      eur(item.totalEUR),
+      `${egpF(item.priceEGP)}/unit × ${item.qty} · ${eur(item.totalEUR)}`,
       'var(--yellow)',
       i===d.goldItems.length-1,
       item.btcLive
