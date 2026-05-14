@@ -348,9 +348,10 @@ const DEFAULT = {
     ]
   },
   realEstate:[
-    {name:"Apt 1 — Kafr Abdo (265m²)", valueEGP:10500000},
-    {name:"Large Apt Share (222m²)",    valueEGP:8890000},
-    {name:"Store Share (45m²)",         valueEGP:2250000},
+    {name:"Apt 1 — Kafr Abdo",  type:"property", sqm:265,  pricePerSqm:39623},
+    {name:"Large Apt Share",     type:"property", sqm:222,  pricePerSqm:40045},
+    {name:"Store Share",         type:"property", sqm:45,   pricePerSqm:50000},
+    {name:"Parking Spaces",      type:"parking",  qty:2.16, pricePerUnit:100000},
   ],
   certificates:[
     {id:1,name:"Certificate #1",bank:"NBE",amountEGP:1000000,issueDate:"2025-06-01",expiryDate:"2026-06-01",interestRate:17,frequency:"monthly"},
@@ -371,9 +372,26 @@ const DEFAULT = {
   ],
 };
 
+function migratePortfolio(p){
+  if(!p.certificates) p.certificates = JSON.parse(JSON.stringify(DEFAULT.certificates));
+  if(!p.gold?.items)  p.gold         = JSON.parse(JSON.stringify(DEFAULT.gold));
+  if(p.realEstate?.length && !p.realEstate[0].type){
+    p.realEstate = p.realEstate.map(item=>{
+      const m = item.name.match(/\((\d+(?:\.\d+)?)m²\)/);
+      if(m){
+        const sqm = parseFloat(m[1]);
+        return {name:item.name.replace(/\s*\(\d+(?:\.\d+)?m²\)/,'').trim(), type:'property', sqm, pricePerSqm:Math.round((item.valueEGP||0)/sqm)};
+      }
+      return {name:item.name, type:'property', sqm:0, pricePerSqm:item.valueEGP||0};
+    });
+  }
+  if(p.realEstate && !p.realEstate.find(i=>i.type==='parking'))
+    p.realEstate.push({name:'Parking Spaces', type:'parking', qty:2.16, pricePerUnit:100000});
+  return p;
+}
+
 let P = (()=>{ try{const s=localStorage.getItem(STORAGE_KEY);return s?JSON.parse(s):JSON.parse(JSON.stringify(DEFAULT))}catch{return JSON.parse(JSON.stringify(DEFAULT))} })();
-if(!P.certificates) P.certificates = JSON.parse(JSON.stringify(DEFAULT.certificates));
-if(!P.gold.items)   P.gold       = JSON.parse(JSON.stringify(DEFAULT.gold));
+migratePortfolio(P);
 let prices = null;
 let editMode = false;
 let draft = null;
@@ -387,10 +405,7 @@ async function loadFromFirestore(){
   try{
     const snap = await FS_DOC.get();
     if(snap.exists){
-      const loaded = JSON.parse(snap.data().json);
-      P = loaded;
-      if(!P.certificates) P.certificates = JSON.parse(JSON.stringify(DEFAULT.certificates));
-      if(!P.gold?.items)   P.gold         = JSON.parse(JSON.stringify(DEFAULT.gold));
+      P = migratePortfolio(JSON.parse(snap.data().json));
       try{localStorage.setItem(STORAGE_KEY,JSON.stringify(P))}catch{}
       if(prices) renderAll();
     }
@@ -400,7 +415,7 @@ async function loadFromFirestore(){
 // ── Formatters ───────────────────────────────────────────
 const nf = (v,d=0)=>new Intl.NumberFormat('fr-FR',{minimumFractionDigits:d,maximumFractionDigits:d}).format(v||0);
 const eur  = v=>`€${nf(v)}`;
-const egpF = v=>`£E ${nf(v)}`;
+const egpF = v=>`EGP ${nf(v)}`;
 
 // ── Fetch prices ──────────────────────────────────────────
 const PROXY = "https://corsproxy.io/?url=";
@@ -532,7 +547,7 @@ function calc(){
   const goldEUR = goldItems.reduce((a,b)=>a+b.totalEUR,0);
   const stocksEUR = stockValues.reduce((a,b)=>a+b.valueEUR,0);
   const cryptoEUR = cryptoValues.reduce((a,b)=>a+b.valueEUR,0);
-  const realEstateEUR = P.realEstate.reduce((a,b)=>a+b.valueEGP*egpR,0);
+  const realEstateEUR = P.realEstate.reduce((a,b)=>a+(b.type==='parking'?b.qty*b.pricePerUnit:b.sqm*b.pricePerSqm)*egpR,0);
   const certTotalEGP = P.certificates.reduce((a,b)=>a+b.amountEGP,0);
   const certTotalEUR = certTotalEGP*egpR;
   const otherSavingsEUR = P.savings.reduce((a,b)=>a+(b.currency==='EGP'?b.valueEGP*egpR:(b.valueEUR||0)),0);
@@ -728,23 +743,42 @@ function renderGold(d){
 }
 
 // ── Real Estate ─────────────────────────────────────────────────
+function reValue(item){ return item.type==='parking' ? item.qty*item.pricePerUnit : item.sqm*item.pricePerSqm; }
 function renderRealEstate(d){
   if(editMode){
     document.getElementById('re-view').style.display='none';
     const ed=document.getElementById('re-edit');
     ed.style.display='block';
-    ed.innerHTML=draft.realEstate.map((p,i)=>`
-      <div class="edit-box">
-        <div><label class="inp-label">Property Name</label><input class="inp" value="${p.name}" onchange="updDraft('realEstate.${i}.name',this.value)"/></div>
-        <div><label class="inp-label">Estimated Value (EGP)</label><input class="inp" type="number" value="${p.valueEGP}" onchange="updDraft('realEstate.${i}.valueEGP',parseFloat(this.value)||0)"/></div>
-      </div>`).join('')+editActionsHTML();
+    ed.innerHTML=draft.realEstate.map((item,i)=>{
+      const val=reValue(item);
+      if(item.type==='parking') return `
+        <div class="edit-box">
+          <div style="font-size:12px;color:var(--gold);font-family:'DM Mono',monospace;margin-bottom:4px">${item.name}</div>
+          <div style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;margin-bottom:10px">${item.qty} parking spaces</div>
+          <div><label class="inp-label">Price per Space (EGP)</label><input class="inp" type="number" value="${item.pricePerUnit}" onchange="updDraft('realEstate.${i}.pricePerUnit',parseFloat(this.value)||0)"/></div>
+          <div style="font-size:11px;color:var(--dim);font-family:'DM Mono',monospace;margin-top:8px">Total: ${egpF(val)} · ${eur(val*d.fx.egpEur)}</div>
+        </div>`;
+      return `
+        <div class="edit-box">
+          <div style="font-size:12px;color:var(--gold);font-family:'DM Mono',monospace;margin-bottom:4px">${item.name}</div>
+          <div style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;margin-bottom:10px">${nf(item.sqm)} m²</div>
+          <div><label class="inp-label">Price per m² (EGP)</label><input class="inp" type="number" value="${item.pricePerSqm}" onchange="updDraft('realEstate.${i}.pricePerSqm',parseFloat(this.value)||0)"/></div>
+          <div style="font-size:11px;color:var(--dim);font-family:'DM Mono',monospace;margin-top:8px">Total: ${egpF(val)} · ${eur(val*d.fx.egpEur)}</div>
+        </div>`;
+    }).join('')+editActionsHTML();
   } else {
     document.getElementById('re-edit').style.display='none';
     const v=document.getElementById('re-view');
     v.style.display='block';
-    v.innerHTML=P.realEstate.map((p,i)=>rowHTML(p.name,'Alexandria · Kafr Abdo',eur(p.valueEGP*d.fx.egpEur),egpF(p.valueEGP),'var(--gold)',i===P.realEstate.length-1)).join('')
+    v.innerHTML=P.realEstate.map((item,i)=>{
+      const val=reValue(item);
+      const sub = item.type==='parking'
+        ? `${item.qty} spaces · ${egpF(item.pricePerUnit)}/space`
+        : `${nf(item.sqm)} m² · ${egpF(item.pricePerSqm)}/m²`;
+      return rowHTML(item.name, sub, eur(val*d.fx.egpEur), egpF(val), 'var(--gold)', i===P.realEstate.length-1);
+    }).join('')
       +totalHTML('TOTAL REAL ESTATE',eur(d.realEstateEUR),'var(--gold)')
-      +`<div class="info-box" style="background:rgba(200,169,110,.04);border:1px solid rgba(200,169,110,.15)">✎ Tap <b style="color:var(--gold)">Edit</b> to update valuations. EUR auto-updates with live EGP/EUR rate.</div>`;
+      +`<div class="info-box" style="background:rgba(200,169,110,.04);border:1px solid rgba(200,169,110,.15)">✎ Tap <b style="color:var(--gold)">Edit</b> to update price/m² or price/space. Totals calculate automatically.</div>`;
   }
 }
 
