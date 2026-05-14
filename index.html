@@ -191,8 +191,8 @@
   <!-- Tabs -->
   <div class="tabs">
     <button class="tab active" onclick="switchTab('overview')">Overview</button>
-    <button class="tab" onclick="switchTab('stocks')">Stocks</button>
-    <button class="tab" onclick="switchTab('crypto')">Crypto &amp; Gold</button>
+    <button class="tab" onclick="switchTab('stocks')">Stocks &amp; Crypto</button>
+    <button class="tab" onclick="switchTab('gold')">Gold</button>
     <button class="tab" onclick="switchTab('realestate')">Real Estate</button>
     <button class="tab" onclick="switchTab('savings')">Savings</button>
     <button class="tab" onclick="switchTab('income')">Income</button>
@@ -209,20 +209,20 @@
     </div>
   </div>
 
-  <!-- Tab: Stocks -->
+  <!-- Tab: Stocks & Crypto -->
   <div class="tab-content" id="tab-stocks">
-    <div class="card"><div class="card-title">Stock Holdings — Live Prices</div>
+    <div class="card" style="margin-bottom:14px"><div class="card-title">Stock Holdings — Live Prices</div>
       <div id="stocks-view"></div>
       <div id="stocks-edit" style="display:none"></div>
     </div>
-  </div>
-
-  <!-- Tab: Crypto & Gold -->
-  <div class="tab-content" id="tab-crypto">
-    <div class="card" style="margin-bottom:14px"><div class="card-title">Crypto — Live Prices</div>
+    <div class="card"><div class="card-title">Crypto — Live Prices</div>
       <div id="crypto-view"></div>
       <div id="crypto-edit" style="display:none"></div>
     </div>
+  </div>
+
+  <!-- Tab: Gold -->
+  <div class="tab-content" id="tab-gold">
     <div class="card"><div class="card-title">Gold — BTC Egypt Live Prices</div>
       <div id="gold-view"></div>
       <div id="gold-edit" style="display:none"></div>
@@ -258,6 +258,40 @@
   </div>
 
   <footer>Yahoo Finance · BTC Egypt · Auto-refresh every 5 min · Edits synced to cloud</footer>
+</div>
+
+<!-- Add Certificate Modal -->
+<div id="cert-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:2000;align-items:center;justify-content:center;padding:16px">
+  <div style="background:linear-gradient(145deg,#141b2d,#0f1520);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:420px;max-height:90vh;overflow-y:auto">
+    <div style="font-size:11px;color:var(--blue);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.12em;margin-bottom:16px">New Certificate</div>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="two-col">
+        <div><label class="inp-label">Name</label><input class="inp" id="mc-name" placeholder="Certificate #5"/></div>
+        <div><label class="inp-label">Bank</label><input class="inp" id="mc-bank" value="NBE"/></div>
+      </div>
+      <div class="two-col">
+        <div><label class="inp-label">Amount (EGP)</label><input class="inp" id="mc-amount" type="number" placeholder="0"/></div>
+        <div><label class="inp-label">Interest Rate %</label><input class="inp" id="mc-rate" type="number" step="0.1" value="17"/></div>
+      </div>
+      <div class="two-col">
+        <div><label class="inp-label">Issue Date</label><input class="inp" id="mc-issue" type="date"/></div>
+        <div><label class="inp-label">Expiry Date</label><input class="inp" id="mc-expiry" type="date"/></div>
+      </div>
+      <div><label class="inp-label">Interest Frequency</label>
+        <select class="inp" id="mc-freq">
+          <option value="monthly">Monthly</option>
+          <option value="quarterly">Quarterly</option>
+          <option value="semi-annual">Semi-Annual</option>
+          <option value="annual">Annual</option>
+        </select>
+      </div>
+    </div>
+    <div id="mc-err" style="font-size:11px;color:#e07070;font-family:'DM Mono',monospace;margin-top:10px;min-height:16px"></div>
+    <div class="edit-actions" style="margin-top:16px">
+      <button class="btn-cancel" onclick="closeAddCertModal()">Cancel</button>
+      <button class="btn-save" onclick="confirmAddCert()">Add Certificate</button>
+    </div>
+  </div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -522,6 +556,7 @@ function renderAll(){
   renderOverview(d);
   renderStocks(d);
   renderCrypto(d);
+  renderGold(d);
   renderRealEstate(d);
   renderCertificates(d);
   renderSavings(d);
@@ -608,7 +643,6 @@ function renderStocks(d){
 function renderCrypto(d){
   if(editMode){
     document.getElementById('crypto-view').style.display='none';
-    document.getElementById('gold-view').style.display='none';
     const ed=document.getElementById('crypto-edit');
     ed.style.display='block';
     ed.innerHTML=draft.crypto.map((c,i)=>`
@@ -618,6 +652,18 @@ function renderCrypto(d){
           <div><label class="inp-label">${c.symbol} Amount</label><input class="inp" type="number" step="0.00001" value="${c.amount}" onchange="updDraft('crypto.${i}.amount',parseFloat(this.value)||0)"/></div>
         </div>
       </div>`).join('')+editActionsHTML();
+  } else {
+    document.getElementById('crypto-edit').style.display='none';
+    const cv=document.getElementById('crypto-view');
+    cv.style.display='block';
+    cv.innerHTML=d.cryptoValues.map((c,i)=>rowHTML(c.name,`${c.amount} ${c.symbol}`,eur(c.valueEUR),`@ ${eur(c.priceEUR)}/${c.symbol}`,'var(--purple)',i===d.cryptoValues.length-1,c.live)).join('');
+  }
+}
+
+// ── Gold ──────────────────────────────────────────────────────
+function renderGold(d){
+  if(editMode){
+    document.getElementById('gold-view').style.display='none';
     const ge=document.getElementById('gold-edit');
     ge.style.display='block';
     ge.innerHTML=draft.gold.items.map((item,i)=>`
@@ -641,11 +687,7 @@ function renderCrypto(d){
     +`<button onclick="addGoldItem()" style="background:rgba(232,197,71,.06);border:1px solid rgba(232,197,71,.2);border-radius:8px;color:var(--yellow);padding:9px 18px;font-size:11px;font-family:'DM Mono',monospace;cursor:pointer;width:100%;margin-bottom:10px">+ Add Gold Item</button>`
     +editActionsHTML();
   } else {
-    document.getElementById('crypto-edit').style.display='none';
     document.getElementById('gold-edit').style.display='none';
-    const cv=document.getElementById('crypto-view');
-    cv.style.display='block';
-    cv.innerHTML=d.cryptoValues.map((c,i)=>rowHTML(c.name,`${c.amount} ${c.symbol}`,eur(c.valueEUR),`@ ${eur(c.priceEUR)}/${c.symbol}`,'var(--purple)',i===d.cryptoValues.length-1,c.live)).join('');
     const gv=document.getElementById('gold-view');
     gv.style.display='block';
     const totalGoldGrams=d.goldItems.reduce((a,b)=>a+b.grams*b.qty,0);
@@ -822,7 +864,7 @@ function renderCertificates(d){
           <button class="btn-remove-cert" onclick="removeCert(${i})">✕ Remove</button>
         </div>
       </div>`).join('')
-    +`<button class="btn-add-cert" onclick="addCert()">+ Add Certificate</button>`
+    +`<button class="btn-add-cert" onclick="openAddCertModal()">+ Add Certificate</button>`
     +editActionsHTML();
   } else {
     document.getElementById('certs-edit').style.display='none';
@@ -881,11 +923,38 @@ function removeGoldItem(i){
   draft.gold.items.splice(i,1);
   renderAll();
 }
-function addCert(){
-  if(!draft)return;
+function openAddCertModal(){
+  if(!draft) return;
   const today=new Date().toISOString().split('T')[0];
   const next=new Date(Date.now()+365*86400000).toISOString().split('T')[0];
-  draft.certificates.push({id:Date.now(),name:`Certificate #${draft.certificates.length+1}`,bank:'NBE',amountEGP:0,issueDate:today,expiryDate:next,interestRate:17,frequency:'monthly'});
+  document.getElementById('mc-name').value=`Certificate #${draft.certificates.length+1}`;
+  document.getElementById('mc-bank').value='NBE';
+  document.getElementById('mc-amount').value='';
+  document.getElementById('mc-rate').value='17';
+  document.getElementById('mc-issue').value=today;
+  document.getElementById('mc-expiry').value=next;
+  document.getElementById('mc-freq').value='monthly';
+  document.getElementById('mc-err').textContent='';
+  const m=document.getElementById('cert-modal');
+  m.style.display='flex';
+}
+function closeAddCertModal(){
+  document.getElementById('cert-modal').style.display='none';
+}
+function confirmAddCert(){
+  const name=document.getElementById('mc-name').value.trim();
+  const bank=document.getElementById('mc-bank').value.trim();
+  const amount=parseFloat(document.getElementById('mc-amount').value)||0;
+  const rate=parseFloat(document.getElementById('mc-rate').value)||0;
+  const issue=document.getElementById('mc-issue').value;
+  const expiry=document.getElementById('mc-expiry').value;
+  const freq=document.getElementById('mc-freq').value;
+  if(!name||!bank||!amount||!issue||!expiry){
+    document.getElementById('mc-err').textContent='Please fill in all fields.';
+    return;
+  }
+  draft.certificates.push({id:Date.now(),name,bank,amountEGP:amount,issueDate:issue,expiryDate:expiry,interestRate:rate,frequency:freq});
+  closeAddCertModal();
   renderAll();
 }
 function removeCert(i){
