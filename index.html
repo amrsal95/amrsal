@@ -360,11 +360,13 @@ async function fetchBTCGoldPrices(){
         const r = await fetch(PROXY+encodeURIComponent(BTC_GQL),{
           method:'POST',
           headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({query:`{products(search:"${term}",pageSize:1){items{name,price_range{minimum_price{final_price{value,currency}}}}}}`})
+          body:JSON.stringify({query:`{products(search:"${term}",pageSize:3){items{name,price_range{minimum_price{final_price{value,currency}}}}}}`})
         });
         const d = await r.json();
-        const p = d?.data?.products?.items?.[0]?.price_range?.minimum_price?.final_price?.value;
-        if(p && p > parseFloat(grams)*500){ results[key]=p; break; }
+        const vals=(d?.data?.products?.items??[])
+          .map(i=>i?.price_range?.minimum_price?.final_price?.value)
+          .filter(p=>p && p>parseFloat(grams)*500);
+        if(vals.length){ results[key]=Math.min(...vals); break; }
       }catch{}
     }
   }));
@@ -619,14 +621,14 @@ function renderCrypto(d){
     const totalGoldEGP=d.goldItems.reduce((a,b)=>a+b.totalEGP,0);
     const hdr=`font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.08em;padding:4px 8px`;
     gv.innerHTML=`
-      <div style="display:grid;grid-template-columns:2fr 1.4fr 44px 1.4fr;margin-bottom:2px">
+      <div style="display:grid;grid-template-columns:2fr 1.4fr 60px 1.4fr;margin-bottom:2px">
         <span style="${hdr}">Item</span>
         <span style="${hdr};text-align:right">Unit Price</span>
         <span style="${hdr};text-align:center">Qty</span>
         <span style="${hdr};text-align:right">Total</span>
       </div>
       ${d.goldItems.map((item,i)=>`
-      <div style="display:grid;grid-template-columns:2fr 1.4fr 44px 1.4fr;transition:background .15s;${i<d.goldItems.length-1?'border-bottom:1px solid #0f1824':''}" onmouseover="this.style.background='rgba(232,197,71,.03)'" onmouseout="this.style.background=''">
+      <div style="display:grid;grid-template-columns:2fr 1.4fr 60px 1.4fr;transition:background .15s;${i<d.goldItems.length-1?'border-bottom:1px solid #0f1824':''}" onmouseover="this.style.background='rgba(232,197,71,.03)'" onmouseout="this.style.background=''">
         <div style="padding:10px 8px">
           <div style="font-size:14px;color:var(--text);display:flex;align-items:center;gap:6px">${item.name}${!item.btcLive?'<span class="est-badge">est</span>':''}</div>
           <div style="font-size:11px;color:var(--dim);font-family:'DM Mono',monospace;margin-top:2px">${item.grams}g ${item.type} · ${item.btcLive?'BTC Egypt live':'est.'}</div>
