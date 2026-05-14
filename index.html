@@ -257,9 +257,11 @@
     </div>
   </div>
 
-  <footer>Yahoo Finance · BTC Egypt · Auto-refresh every 5 min · Edits saved in browser</footer>
+  <footer>Yahoo Finance · BTC Egypt · Auto-refresh every 5 min · Edits synced to cloud</footer>
 </div>
 
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script>
 // ── Auth ──────────────────────────────────────────────
 const PWD = "Basbosty!989";
@@ -275,6 +277,18 @@ function doLogin(){
     setTimeout(()=>err.textContent='', 3000);
   }
 }
+
+// ── Firebase ─────────────────────────────────────────────
+firebase.initializeApp({
+  apiKey:"AIzaSyC_u270MXtO4UFWWCgx1JhYyOmz2ESd-ws",
+  authDomain:"wealth-28b1f.firebaseapp.com",
+  projectId:"wealth-28b1f",
+  storageBucket:"wealth-28b1f.firebasestorage.app",
+  messagingSenderId:"953218454121",
+  appId:"1:953218454121:web:3e07bec90916468bcf88f8"
+});
+const db = firebase.firestore();
+const FS_DOC = db.collection('portfolio').doc('main');
 
 // ── Portfolio ───────────────────────────────────────────
 const STORAGE_KEY = "wealth_v4";
@@ -330,7 +344,24 @@ let prices = null;
 let editMode = false;
 let draft = null;
 
-function savePortfolio(){ try{localStorage.setItem(STORAGE_KEY,JSON.stringify(P))}catch{} }
+function savePortfolio(){
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(P))}catch{}
+  FS_DOC.set({json:JSON.stringify(P)}).catch(()=>{});
+}
+
+async function loadFromFirestore(){
+  try{
+    const snap = await FS_DOC.get();
+    if(snap.exists){
+      const loaded = JSON.parse(snap.data().json);
+      P = loaded;
+      if(!P.certificates) P.certificates = JSON.parse(JSON.stringify(DEFAULT.certificates));
+      if(!P.gold?.items)   P.gold         = JSON.parse(JSON.stringify(DEFAULT.gold));
+      try{localStorage.setItem(STORAGE_KEY,JSON.stringify(P))}catch{}
+      if(prices) renderAll();
+    }
+  }catch(e){}
+}
 
 // ── Formatters ───────────────────────────────────────────
 const nf = (v,d=0)=>new Intl.NumberFormat('fr-FR',{minimumFractionDigits:d,maximumFractionDigits:d}).format(v||0);
@@ -913,6 +944,7 @@ function switchTab(name){
 
 // ── Init ──────────────────────────────────────────────────
 refreshPrices();
+loadFromFirestore();
 setInterval(refreshPrices, 300000);
 </script>
 </body>
